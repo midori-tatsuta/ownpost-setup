@@ -1,0 +1,54 @@
+# OwnPost: set up / update.
+# Run it from "Actions" -> "OwnPostを設置・更新" -> "Run workflow".
+# The first run installs OwnPost on your Cloudflare; later runs update it.
+# When you (or Claude Code) push changes under app/, they are deployed
+# automatically (without looking for a new version).
+# To update automatically once a week, add the repository variable
+# AUTO_UPDATE = true ("Settings" -> "Secrets and variables" -> "Actions" -> "Variables").
+name: OwnPostを設置・更新
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '新しい版がなくても、入れ直す'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ['app/**']
+  schedule:
+    - cron: '23 18 * * 0' # Monday 03:23 in Japan, only when AUTO_UPDATE is true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ownpost
+  cancel-in-progress: false
+
+jobs:
+  ownpost:
+    if: github.event_name != 'schedule' || vars.AUTO_UPDATE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: OwnPost
+        run: node .github/ownpost/update.mjs
+        env:
+          OWNPOST_KEY: ${{ secrets.OWNPOST_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          FORCE: ${{ inputs.force }}
+          DEPLOY_ONLY: ${{ github.event_name == 'push' }}
+          GH_TOKEN: ${{ github.token }}
